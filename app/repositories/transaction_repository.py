@@ -114,61 +114,68 @@ def list_transactions(
 
     transactions = []
 
-    for (
-        reserva,
-        usuario,
-        funcion,
-        pelicula,
-        sala
-    ) in results:
+    for (reserva, usuario, funcion, pelicula, sala) in results:
+
+        # Contar boletos y snacks para esta reserva
+        num_boletos = (
+            db.query(func.count(Boleto.id_boleto))
+            .filter(Boleto.id_reserva == reserva.id_reserva)
+            .scalar()
+        )
+
+        num_snacks = (
+            db.query(func.count(ReservaSnack.id_producto))
+            .filter(ReservaSnack.id_reserva == reserva.id_reserva)
+            .scalar()
+        )
+
+        total_snacks = float(
+            db.query(func.coalesce(func.sum(ReservaSnack.subtotal), 0))
+            .filter(ReservaSnack.id_reserva == reserva.id_reserva)
+            .scalar()
+        )
+        monto_real = float(reserva.monto_total) + total_snacks
+
+        # Determinar tipo
+        if num_boletos > 0 and num_snacks > 0:
+            tipo = 'Entrada + Dulcería'
+        elif num_snacks > 0:
+            tipo = 'Solo Dulcería'
+        else:
+            tipo = 'Solo Entrada'
 
         transactions.append({
-            "id_reserva": reserva.id_reserva,
-
-            "cliente": (
-                f"{usuario.nombres} "
-                f"{usuario.apellidos}"
-            ),
-
-            "pelicula": pelicula.titulo,
-
-            "sala": sala.nombre,
-
-            "monto_total": reserva.monto_total,
-
-            "estado_pago": reserva.estado_pago,
-
-            "metodo_pago": reserva.metodo_pago,
-
-            "fecha_compra": reserva.fecha_reserva
+            "id_reserva":   reserva.id_reserva,
+            "cliente":      f"{usuario.nombres} {usuario.apellidos}",
+            "pelicula":     pelicula.titulo,
+            "sala":         sala.nombre,
+            "monto_total":  monto_real,
+            "estado_pago":  reserva.estado_pago,
+            "metodo_pago":  reserva.metodo_pago,
+            "fecha_compra": reserva.fecha_reserva,
+            "tipo":         tipo,   # ← nuevo campo
         })
 
-    ingresos_totales = (
-        db.query(
-            func.coalesce(
-                func.sum(
-                    Reserva.monto_total
-                ),
-                0
-            )
-        )
+    ingresos_reservas = float(
+        db.query(func.coalesce(func.sum(Reserva.monto_total), 0))
         .scalar()
     )
 
+    ingresos_snacks = float(
+        db.query(func.coalesce(func.sum(ReservaSnack.subtotal), 0))
+        .scalar()
+    )
+
+    ingresos_totales = ingresos_reservas + ingresos_snacks
+
     ventas_mes = (
-        db.query(
-            func.count(
-                Reserva.id_reserva
-            )
-        )
-        .filter(
-            Reserva.estado_pago == "Pagado"
-        )
+        db.query(func.count(Reserva.id_reserva))
+        .filter(Reserva.estado_pago == "Pagado")
         .scalar()
     )
 
     ticket_promedio = (
-        ingresos_totales / ventas_mes
+        ingresos_reservas / ventas_mes
         if ventas_mes > 0
         else 0
     )

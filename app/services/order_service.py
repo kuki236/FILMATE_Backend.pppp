@@ -179,6 +179,27 @@ def get_ticket_bundle_for_reservation(db: Session, reservation_id: int) -> Ticke
     seat_ids = [ticket.id_asiento for ticket in boletos]
     seat_rows = db.execute(select(Asiento).where(Asiento.id_asiento.in_(seat_ids))).scalars().all()
 
+    snacks_query = (
+        db.execute(
+            select(ReservaSnack, ProductoSnack)
+            .join(ProductoSnack, ProductoSnack.id_producto == ReservaSnack.id_producto)
+            .where(ReservaSnack.id_reserva == reservation_id)
+        ).all()
+    )
+    snacks = [
+        {
+            "producto": producto.nombre,
+            "cantidad": rs.cantidad,
+            "precio_unitario": float(rs.precio_unitario),
+            "subtotal": float(rs.subtotal) if rs.subtotal is not None else float(rs.cantidad * rs.precio_unitario),
+        }
+        for rs, producto in snacks_query
+    ]
+
+    total_snacks = sum(s["subtotal"] for s in snacks)
+    monto_total_real = float(reserva.monto_total) + total_snacks
+
+
     qr_payload = build_ticket_qr_payload(reserva, funcion, seat_rows, boletos)
     return TicketIssueResponse(
         reserva={
@@ -194,7 +215,9 @@ def get_ticket_bundle_for_reservation(db: Session, reservation_id: int) -> Ticke
             "estado_pago": reserva.estado_pago,
             "metodo_pago": reserva.metodo_pago,
             "transaccion_id": reserva.transaccion_id,
+            "monto_total":         monto_total_real,
         },
         boletos=[build_ticket_response(ticket) for ticket in boletos],
+        snacks=snacks, 
         qr=qr_payload,
     )
