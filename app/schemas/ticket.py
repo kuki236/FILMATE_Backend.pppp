@@ -49,4 +49,5 @@ class TicketQrPayload(BaseModel):
 class TicketIssueResponse(BaseModel):
     reserva: Dict[str, Any]
     boletos: List[TicketResponse]
+    snacks: List[Dict[str, Any]] = []
     qr: TicketQrPayload
